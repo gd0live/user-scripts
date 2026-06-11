@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         SOOP Clip/Catch Creator Stats
-// @version      0.8.7
+// @version      0.8.17
 // @description  SOOP 방송국 클립/캐치 검색 결과에서 생성자별 통계를 표시합니다.
 // @match        https://www.sooplive.com/station/*
 // @run-at       document-start
@@ -21,8 +21,10 @@
         fullCollectDelayMs: 250,
         fullCollectMaxPages: 200,
 
-        clipApiHost: "api-channel.sooplive.com",
-        catchApiHost: "chapi.sooplive.com",
+        apiHosts: [
+            "api-channel.sooplive.com",
+            "chapi.sooplive.com",
+        ],
 
         debug: false,
     };
@@ -38,10 +40,18 @@
     let lastApiUrl = "";
     let isCollectingAll = false;
     let isInternalRequest = false;
+    let isPanelDismissed = false;
     let collectAllStatus = "";
 
     const $ = (selector, root = document) => root.querySelector(selector);
     const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+    const SOOP_BADGE_SVG_BY_CLASS = {
+        ObjectFanBadgeBigFan: `<div aria-label="ObjectFanBadgeBigFan" class="icon-wrap __soopui__Icon-module__icon___J5RH5" style="--fill-color: none; --stroke-color: none; width: 14px; height: 14px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"> <rect width="14" height="14" rx="3" fill="#D65B8F"></rect> <path d="M3 4.8231C3 6.10451 4.06083 6.91326 5.39475 6.91326C6.79169 6.91326 7.8 6.073 7.8 4.8231C7.8 3.55221 6.79169 2.64893 5.39475 2.64893C4.00832 2.64893 3 3.57321 3 4.8231ZM4.19737 4.8231C4.19737 4.1824 4.73304 3.66774 5.39475 3.66774C6.14048 3.66774 6.59212 4.1824 6.59212 4.8231C6.59212 5.39028 6.12998 5.89444 5.39475 5.89444C4.68053 5.89444 4.19737 5.4428 4.19737 4.8231Z" fill="white"></path> <path d="M11 7.1734V2.07489H9.80001V3.17489H8.33335L8.35529 4.31044H9.80001V5.33102H8.35529L8.33335 6.39549H9.80001V7.1734H11ZM11 11.9251V10.9045H5.87518V10.2351H11V7.62333H4.52539V8.63294H9.72704V9.30235H4.58026V11.9251H11Z" fill="white"></path> </svg> </div>`,
+        ObjectSubscribeBadge: `<div aria-label="ObjectSubscribeBadge" class="icon-wrap __soopui__Icon-module__icon___J5RH5" style="--fill-color: none; --stroke-color: none; width: 14px; height: 14px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="7" cy="7" r="7" fill="#EF565F"></circle> <path d="M9.79999 8.21963C9.93296 8.24449 10.0603 8.26053 10.1821 8.26053C11.2029 8.26053 11.76 7.54746 11.76 6.67915C11.76 5.81083 11.2029 5.11053 10.1821 5.11053C10.0837 5.11053 9.98101 5.12176 9.87604 5.13781" stroke="white" stroke-width="0.682372"></path> <path d="M3.16062 7.92665C3.29475 9.5617 4.66867 10.8514 6.33775 10.8514C7.73313 10.8514 9.00548 9.9507 9.47112 8.70043C9.53604 8.52613 9.66002 8.01145 9.66002 7.75233V5.1176V4.34329C9.66002 4.07175 9.43989 3.85138 9.16835 3.85138H3.6417C3.37015 3.85138 3.15002 4.07175 3.15002 4.34329L3.15004 7.43515L3.16062 7.92665Z" fill="white" stroke="white" stroke-width="0.578668" stroke-linejoin="round"></path> <path fill-rule="evenodd" clip-rule="evenodd" d="M6.78373 5.46424C6.61206 5.17859 6.19851 5.17859 6.02685 5.46424L5.61007 6.15775L4.82265 6.34038C4.49832 6.4156 4.37052 6.80946 4.58876 7.06123L5.11861 7.67247L5.04872 8.47885C5.01994 8.81099 5.35451 9.05441 5.66105 8.92436L6.40529 8.60862L7.14952 8.92436C7.45606 9.05441 7.79063 8.81099 7.76185 8.47885L7.69196 7.67247L8.22181 7.06123C8.44005 6.80946 8.31226 6.4156 7.98792 6.34038L7.2005 6.15775L6.78373 5.46424Z" fill="#EF565F"></path> </svg> </div>`,
+        ObjectFanBadgeSupporter: `<div aria-label="ObjectFanBadgeSupporter" class="icon-wrap __soopui__Icon-module__icon___J5RH5" style="--fill-color: none; --stroke-color: none; width: 14px; height: 14px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"> <rect width="14" height="14" rx="3" fill="#9379BD"></rect> <path d="M5.5152 8.20501C5.5152 8.44501 5.55853 8.64835 5.6452 8.81501C5.73186 8.98168 5.8452 9.11835 5.9852 9.22501C6.13186 9.32501 6.30186 9.40168 6.4952 9.45501C6.68853 9.50168 6.88853 9.52501 7.0952 9.52501C7.2352 9.52501 7.3852 9.51501 7.5452 9.49501C7.7052 9.46835 7.8552 9.42168 7.9952 9.35501C8.1352 9.28835 8.25186 9.19835 8.3452 9.08501C8.43853 8.96501 8.4852 8.81501 8.4852 8.63501C8.4852 8.44168 8.42186 8.28501 8.2952 8.16501C8.1752 8.04501 8.0152 7.94501 7.8152 7.86501C7.6152 7.78501 7.38853 7.71501 7.1352 7.65501C6.88186 7.59501 6.6252 7.52835 6.3652 7.45501C6.09853 7.38835 5.83853 7.30835 5.5852 7.21501C5.33186 7.11501 5.1052 6.98835 4.9052 6.83501C4.7052 6.68168 4.54186 6.49168 4.4152 6.26501C4.2952 6.03168 4.2352 5.75168 4.2352 5.42501C4.2352 5.05835 4.31186 4.74168 4.4652 4.47501C4.6252 4.20168 4.83186 3.97501 5.0852 3.79501C5.33853 3.61501 5.6252 3.48168 5.9452 3.39501C6.2652 3.30835 6.5852 3.26501 6.9052 3.26501C7.27853 3.26501 7.6352 3.30835 7.9752 3.39501C8.32186 3.47501 8.62853 3.60835 8.8952 3.79501C9.16186 3.98168 9.37186 4.22168 9.5252 4.51501C9.6852 4.80168 9.7652 5.15168 9.7652 5.56501H8.2452C8.23186 5.35168 8.1852 5.17501 8.1052 5.03501C8.03186 4.89501 7.93186 4.78501 7.8052 4.70501C7.67853 4.62501 7.53186 4.56835 7.3652 4.53501C7.2052 4.50168 7.02853 4.48501 6.8352 4.48501C6.70853 4.48501 6.58186 4.49835 6.4552 4.52501C6.32853 4.55168 6.21186 4.59835 6.1052 4.66501C6.0052 4.73168 5.92186 4.81501 5.8552 4.91501C5.78853 5.01501 5.7552 5.14168 5.7552 5.29501C5.7552 5.43501 5.78186 5.54835 5.8352 5.63501C5.88853 5.72168 5.99186 5.80168 6.1452 5.87501C6.3052 5.94835 6.52186 6.02168 6.7952 6.09501C7.0752 6.16835 7.43853 6.26168 7.8852 6.37501C8.01853 6.40168 8.20186 6.45168 8.4352 6.52501C8.6752 6.59168 8.91186 6.70168 9.1452 6.85501C9.37853 7.00835 9.57853 7.21501 9.7452 7.47501C9.91853 7.72835 10.0052 8.05501 10.0052 8.45501C10.0052 8.78168 9.94186 9.08501 9.8152 9.36501C9.68853 9.64501 9.49853 9.88835 9.2452 10.095C8.99853 10.295 8.68853 10.4517 8.3152 10.565C7.94853 10.6783 7.52186 10.735 7.0352 10.735C6.64186 10.735 6.25853 10.685 5.8852 10.585C5.51853 10.4917 5.19186 10.3417 4.9052 10.135C4.6252 9.92835 4.40186 9.66501 4.2352 9.34501C4.06853 9.02501 3.98853 8.64501 3.9952 8.20501H5.5152Z" fill="white"></path> </svg> </div>`,
+        ObjectFanBadge: `<div aria-label="ObjectFanBadge" class="icon-wrap __soopui__Icon-module__icon___J5RH5" style="--fill-color: none; --stroke-color: none; width: 14px; height: 14px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"> <rect width="14" height="14" rx="3" fill="#75AA5C"></rect> <path d="M4.48999 3.42999H9.50999V4.74999H6.05999V6.39999H9.04999V7.61999H6.05999V10.57H4.48999V3.42999Z" fill="white"></path> </svg> </div>`,
+    };
 
     function log(...args) {
         if (CONFIG.debug) {
@@ -105,20 +115,27 @@
         return location.pathname.match(/^\/station\/([^/]+)/)?.[1] || "";
     }
 
+    function isConfiguredApiHost(hostname) {
+        return CONFIG.apiHosts.includes(hostname);
+    }
+
     function getApiType(urlLike) {
         try {
             const url = new URL(urlLike, location.href);
 
+            if (!isConfiguredApiHost(url.hostname)) {
+                return "";
+            }
+
             if (
-                url.hostname === CONFIG.clipApiHost &&
                 /^\/v1\.1\/channel\/[^/]+\/vod\/clip(?:\/[^/]+)?$/.test(url.pathname)
             ) {
                 return "clip";
             }
 
             if (
-                url.hostname === CONFIG.catchApiHost &&
-                /^\/api\/[^/]+\/vods\/catch\/[^/]+$/.test(url.pathname)
+                /^\/api\/[^/]+\/vods\/catch(?:\/[^/]+)?$/.test(url.pathname) ||
+                /^\/v1\.1\/channel\/[^/]+\/vod\/catch(?:\/[^/]+)?$/.test(url.pathname)
             ) {
                 return "catch";
             }
@@ -151,7 +168,9 @@
             }
 
             if (apiType === "catch") {
-                return url.pathname.match(/^\/api\/([^/]+)\/vods\/catch\/[^/]+$/)?.[1] || "";
+                return url.pathname.match(/^\/api\/([^/]+)\/vods\/catch(?:\/[^/]+)?$/)?.[1]
+                    || url.pathname.match(/^\/v1\.1\/channel\/([^/]+)\/vod\/catch(?:\/[^/]+)?$/)?.[1]
+                    || "";
             }
 
             return "";
@@ -170,7 +189,9 @@
             }
 
             if (apiType === "catch") {
-                return url.pathname.match(/^\/api\/[^/]+\/vods\/catch\/([^/]+)$/)?.[1] || "";
+                return url.pathname.match(/^\/api\/[^/]+\/vods\/catch\/([^/]+)$/)?.[1]
+                    || url.pathname.match(/^\/v1\.1\/channel\/[^/]+\/vod\/catch\/([^/]+)$/)?.[1]
+                    || "";
             }
 
             return "";
@@ -307,6 +328,8 @@
             return;
         }
 
+        if (isPanelDismissed) return;
+
         isWaitingForApi = true;
         startApiWaitTimer();
         resetStats();
@@ -323,80 +346,82 @@
         }
     }
 
-    function getTitle(raw) {
-        return String(firstNonEmpty(
-            raw.titleName,
-            raw.title_name,
-            raw.title,
-            raw.clipTitle,
-            raw.clip_title,
-            raw.catchTitle,
-            raw.catch_title,
-            raw.vodTitle,
-            raw.vod_title,
-            raw.subject,
-            raw.contents,
-            raw.content
-        )).replace(/\s+/g, " ").trim();
+    function getTitle(raw, apiType) {
+        const candidates = apiType === "catch"
+            ? [raw.titleName, raw.catchTitle, raw.catch_title]
+            : [raw.titleName];
+
+        return String(firstNonEmpty(...candidates)).replace(/\s+/g, " ").trim();
     }
 
     function getUserId(raw) {
         return String(firstNonEmpty(
             raw.userId,
-            raw.user_id,
-            raw?.copyright?.userId,
-            raw?.copyright?.user_id,
-            raw?.badge?.userId,
-            raw?.badge?.user_id
+            raw?.copyright?.userId
         )).trim();
     }
 
     function getUserNick(raw) {
         return String(firstNonEmpty(
             raw.userNick,
-            raw.user_nick,
-            raw.nickName,
-            raw.nickname,
-            raw.nick,
-            raw?.copyright?.userNick,
-            raw?.copyright?.user_nick
+            raw?.copyright?.userNick
         )).trim();
     }
 
-    function getItemNo(raw) {
-        return String(firstNonEmpty(
-            raw.titleNo,
-            raw.title_no,
-            raw.vodNo,
-            raw.vod_no,
-            raw.catchNo,
-            raw.catch_no,
-            raw.id
-        )).trim();
+    function getItemNo(raw, apiType) {
+        const candidates = apiType === "catch"
+            ? [raw.titleNo, raw.catchNo, raw.catch_no]
+            : [raw.titleNo];
+
+        return String(firstNonEmpty(...candidates)).trim();
     }
 
     function getDate(raw) {
         return String(firstNonEmpty(
-            raw.regDate,
-            raw.reg_date,
-            raw.createdAt,
-            raw.created_at,
-            raw.createDate,
-            raw.create_date
+            raw.regDate
         )).trim();
     }
 
     function getView(raw) {
         return firstNonEmpty(
             raw?.count?.readCnt,
-            raw?.count?.read_cnt,
-            raw?.count?.vodReadCnt,
-            raw?.count?.vod_read_cnt,
-            raw.viewCnt,
-            raw.view_cnt,
-            raw.readCnt,
-            raw.read_cnt
+            raw?.count?.vodReadCnt
         );
+    }
+
+    function isActiveBadgeValue(value) {
+        return value === true || value === 1 || value === "1" || value === "Y";
+    }
+
+    function getCreatorBadges(raw) {
+        return {
+            isTopFan: isActiveBadgeValue(raw?.badge?.isTopFan),
+            isFan: isActiveBadgeValue(raw?.badge?.isFan),
+            isSubscribe: isActiveBadgeValue(raw?.badge?.isSubscribe),
+            isSupport: isActiveBadgeValue(raw?.badge?.isSupport),
+        };
+    }
+
+    function mergeBadges(target, source) {
+        return {
+            isTopFan: Boolean(target?.isTopFan || source?.isTopFan),
+            isFan: Boolean(target?.isFan || source?.isFan),
+            isSubscribe: Boolean(target?.isSubscribe || source?.isSubscribe),
+            isSupport: Boolean(target?.isSupport || source?.isSupport),
+        };
+    }
+
+    function parseViewCount(value) {
+        if (value === null || value === undefined || value === "") return 0;
+
+        const normalized = String(value).replace(/,/g, "").trim();
+        const count = Number(normalized);
+
+        return Number.isFinite(count) ? count : 0;
+    }
+
+    function formatNumber(value) {
+        return Number(value || 0).toLocaleString("ko-KR");
     }
 
     function getItemUrl(raw, apiType, itemNo) {
@@ -421,8 +446,8 @@
     }
 
     function normalizeItem(raw, apiType) {
-        const itemNo = getItemNo(raw);
-        const title = getTitle(raw);
+        const itemNo = getItemNo(raw, apiType);
+        const title = getTitle(raw, apiType);
         const userId = getUserId(raw);
         const userNick = getUserNick(raw);
 
@@ -434,6 +459,7 @@
             userId,
             regDate: getDate(raw),
             view: getView(raw),
+            badges: getCreatorBadges(raw),
             url: getItemUrl(raw, apiType, itemNo),
         };
     }
@@ -475,10 +501,14 @@
                 userId: item.userId,
                 userNick: item.userNick,
                 count: 0,
+                viewTotal: 0,
+                badges: item.badges,
                 items: [],
             };
 
             stat.count += 1;
+            stat.viewTotal += parseViewCount(item.view);
+            stat.badges = mergeBadges(stat.badges, item.badges);
             stat.items.push(item);
 
             if (item.userNick) {
@@ -522,6 +552,7 @@
     function getSortedStats() {
         return [...statsByUserId.values()].sort((a, b) => {
             if (b.count !== a.count) return b.count - a.count;
+            if (b.viewTotal !== a.viewTotal) return b.viewTotal - a.viewTotal;
 
             const aName = a.userNick || a.userId || "";
             const bName = b.userNick || b.userId || "";
@@ -544,7 +575,7 @@
         position: fixed;
         top: 80px;
         right: 24px;
-        width: 360px;
+        width: 400px;
         max-height: 76vh;
         overflow: hidden;
         z-index: 999999;
@@ -635,6 +666,7 @@
       #${CONFIG.panelId} table {
         width: 100%;
         border-collapse: collapse;
+        table-layout: fixed;
       }
 
       #${CONFIG.panelId} th,
@@ -643,6 +675,27 @@
         border-bottom: 1px solid #eee;
         text-align: left;
         vertical-align: top;
+      }
+
+      #${CONFIG.panelId} th:nth-child(n+2),
+      #${CONFIG.panelId} td:nth-child(n+2) {
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      #${CONFIG.panelId} th:nth-child(1),
+      #${CONFIG.panelId} td:nth-child(1) {
+        width: auto;
+      }
+
+      #${CONFIG.panelId} th:nth-child(2),
+      #${CONFIG.panelId} td:nth-child(2) {
+        width: 58px;
+      }
+
+      #${CONFIG.panelId} th:nth-child(3),
+      #${CONFIG.panelId} td:nth-child(3) {
+        width: 86px;
       }
 
       #${CONFIG.panelId} th:last-child,
@@ -667,6 +720,78 @@
       #${CONFIG.panelId} .sc-user-link:hover {
         color: #0969da;
         text-decoration: underline;
+      }
+
+      #${CONFIG.panelId} .sc-user-name {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      #${CONFIG.panelId} .sc-user-link {
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #${CONFIG.panelId} .sc-badges {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 2px;
+      }
+
+      #${CONFIG.panelId} .sc-soop-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+      }
+
+      #${CONFIG.panelId} .sc-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 3px;
+        border: 1px solid transparent;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      #${CONFIG.panelId} .sc-badge-topfan {
+        color: #9a3412;
+        background: #ffedd5;
+        border-color: #fed7aa;
+      }
+
+      #${CONFIG.panelId} .sc-badge-fan {
+        color: #166534;
+        background: #dcfce7;
+        border-color: #bbf7d0;
+      }
+
+      #${CONFIG.panelId} .sc-badge-subscribe {
+        color: #1d4ed8;
+        background: #dbeafe;
+        border-color: #bfdbfe;
+      }
+
+      #${CONFIG.panelId} .sc-badge-support {
+        color: #7e22ce;
+        background: #f3e8ff;
+        border-color: #e9d5ff;
       }
 
       #${CONFIG.panelId} .sc-items {
@@ -743,25 +868,100 @@
     `;
     }
 
+    function normalizeSoopBadgeHtml(html, title) {
+        const template = document.createElement("template");
+        template.innerHTML = String(html || "").trim();
+
+        const badge = template.content.firstElementChild;
+
+        if (!badge) return "";
+
+        badge.classList.add("sc-soop-badge");
+        badge.setAttribute("aria-label", title);
+        badge.setAttribute("title", title);
+
+        return badge.outerHTML;
+    }
+
+    function getEmbeddedSoopBadgeHtml(objectClassName, title) {
+        return normalizeSoopBadgeHtml(SOOP_BADGE_SVG_BY_CLASS[objectClassName], title);
+    }
+
+    function getExistingSoopBadgeHtml(objectClassName, title) {
+        const selectors = [
+            `[aria-label="${objectClassName}"]`,
+            `[title="${objectClassName}"]`,
+            `[class*="${objectClassName}"]`,
+        ];
+        const badge = document.querySelector(selectors.join(","));
+
+        if (!badge) return "";
+
+        return normalizeSoopBadgeHtml(badge.outerHTML, title);
+    }
+
+    function getSoopBadgeHtml(objectClassName, title) {
+        return getEmbeddedSoopBadgeHtml(objectClassName, title)
+            || getExistingSoopBadgeHtml(objectClassName, title);
+    }
+
+    function createTextBadgeHtml(className, label, title) {
+        return `<span class="sc-badge sc-badge-${escapeHtml(className)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+    }
+
+    function createBadgeHtml(badges) {
+        const definitions = [];
+
+        if (badges?.isTopFan) {
+            definitions.push(["topfan", "ObjectFanBadgeBigFan", "열혈", "열혈팬"]);
+        }
+
+        if (badges?.isSubscribe) {
+            definitions.push(["subscribe", "ObjectSubscribeBadge", "구독", "구독자"]);
+        }
+
+        if (badges?.isSupport) {
+            definitions.push(["support", "ObjectFanBadgeSupporter", "서포터", "서포터"]);
+        }
+
+        if (badges?.isFan && !badges?.isTopFan && !badges?.isSupport) {
+            definitions.push(["fan", "ObjectFanBadge", "팬", "팬"]);
+        }
+
+        const html = definitions
+            .map(([className, objectClassName, label, title]) => (
+                getSoopBadgeHtml(objectClassName, title)
+                || createTextBadgeHtml(className, label, title)
+            ))
+            .join("");
+
+        return html ? `<span class="sc-badges">${html}</span>` : "";
+    }
+
     function createUserHtml(stat, index) {
         const displayName = stat.userNick || "(닉네임 없음)";
         const stationUrl = getStationUrl(stat.userId);
+        const badgeHtml = createBadgeHtml(stat.badges);
 
         return `
       <tr class="sc-user-row" data-index="${index}">
         <td title="${escapeHtml(displayName)}">
-          <a
-            class="sc-user-link"
-            href="${escapeHtml(stationUrl)}"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="방송국 열기"
-          >${escapeHtml(displayName)}</a>
+          <div class="sc-user-name">
+            <a
+              class="sc-user-link"
+              href="${escapeHtml(stationUrl)}"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="방송국 열기"
+            >${escapeHtml(displayName)}</a>
+            ${badgeHtml}
+          </div>
         </td>
-        <td>${stat.count}</td>
+        <td>${formatNumber(stat.count)}</td>
+        <td>${formatNumber(stat.viewTotal)}</td>
       </tr>
       <tr>
-        <td colspan="2" style="padding:0;">
+        <td colspan="3" style="padding:0;">
           <div class="sc-items" data-items="${index}">
             ${stat.items.map(createItemHtml).join("")}
           </div>
@@ -772,6 +972,7 @@
 
     function createPanelHtml(stats, isCollapsed) {
         const meta = getCurrentPageMeta();
+        const viewTotal = stats.reduce((sum, stat) => sum + (stat.viewTotal || 0), 0);
 
         const periodText = meta.startDate || meta.endDate
             ? `${meta.startDate || "-"} ~ ${meta.endDate || "-"}`
@@ -794,6 +995,7 @@
             <tr>
               <th>닉네임</th>
               <th>${typeLabel} 수</th>
+              <th>조회 수 합계</th>
             </tr>
           </thead>
           <tbody>
@@ -823,8 +1025,9 @@
         <div class="sc-meta">
           <div>기간: <b>${escapeHtml(periodText)}</b></div>
           <div>키워드: <b>${escapeHtml(meta.keyword || "-")}</b></div>
-          <div>수집 ${typeLabel}: <b>${itemsByKey.size}</b>개</div>
-          <div>생성자 수: <b>${stats.length}</b>명</div>
+          <div>수집 ${typeLabel}: <b>${formatNumber(itemsByKey.size)}</b>개</div>
+          <div>조회 수 합계: <b>${formatNumber(viewTotal)}</b>회</div>
+          <div>생성자 수: <b>${formatNumber(stats.length)}</b>명</div>
           ${statusText ? `<div class="sc-status">${escapeHtml(statusText)}</div>` : ""}
         </div>
 
@@ -867,6 +1070,11 @@
             "creator_id",
             "creator_nick",
             "count",
+            "view_total",
+            "is_top_fan",
+            "is_fan",
+            "is_subscribe",
+            "is_support",
             "station_url",
         ]];
 
@@ -876,6 +1084,11 @@
                 stat.userId,
                 stat.userNick,
                 stat.count,
+                stat.viewTotal,
+                stat.badges?.isTopFan ? 1 : 0,
+                stat.badges?.isFan ? 1 : 0,
+                stat.badges?.isSubscribe ? 1 : 0,
+                stat.badges?.isSupport ? 1 : 0,
                 getStationUrl(stat.userId),
             ]);
         }
@@ -948,9 +1161,13 @@
                 userId: item.userId,
                 userNick: item.userNick,
                 count: 0,
+                viewTotal: 0,
+                badges: item.badges,
             };
 
             stat.count += 1;
+            stat.viewTotal += parseViewCount(item.view);
+            stat.badges = mergeBadges(stat.badges, item.badges);
 
             if (item.userNick) {
                 stat.userNick = item.userNick;
@@ -961,6 +1178,7 @@
 
         return [...map.values()].sort((a, b) => {
             if (b.count !== a.count) return b.count - a.count;
+            if (b.viewTotal !== a.viewTotal) return b.viewTotal - a.viewTotal;
 
             const aName = a.userNick || a.userId || "";
             const bName = b.userNick || b.userId || "";
@@ -1079,8 +1297,8 @@
         exportAllBtn?.addEventListener("click", collectAllAndDownloadStatsCsv);
 
         closeBtn?.addEventListener("click", () => {
-            panel.remove();
-            showClosedPanel();
+            isPanelDismissed = true;
+            removeUi();
         });
 
         $$(".sc-user-row", panel).forEach((row) => {
@@ -1095,6 +1313,11 @@
 
     function renderPanel() {
         if (!isTargetPage()) {
+            removeUi();
+            return;
+        }
+
+        if (isPanelDismissed) {
             removeUi();
             return;
         }
@@ -1122,6 +1345,8 @@
             removeUi();
             return;
         }
+
+        if (isPanelDismissed) return;
 
         if ($(`#${CONFIG.panelId}`)) return;
 
@@ -1241,6 +1466,7 @@
                 currentContextKey = "";
                 currentPageStateKey = "";
                 isWaitingForApi = true;
+                isPanelDismissed = false;
                 return;
             }
 
@@ -1251,6 +1477,7 @@
             }
 
             currentPageStateKey = nextPageStateKey;
+            isPanelDismissed = false;
             markWaitingForApi();
         });
     }
