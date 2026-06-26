@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Naver Cafe Search User Stats
-// @version      0.7.1
+// @version      0.7.2
 // @description  네이버 카페 검색 결과 페이지에서 작성자별 글 통계를 화면에 표시합니다.
 // @match        https://cafe.naver.com/*
 // @run-at       document-idle
