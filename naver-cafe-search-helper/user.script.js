@@ -61,6 +61,22 @@
         || ""
     );
 
+    function isArticleContentPage() {
+        return /\/articles\/\d+(?:[/?#]|$)/.test(location.pathname);
+    }
+
+    function isSearchResultsPage() {
+        if (!hasSearchQuery()) return false;
+        if (isArticleContentPage()) return false;
+
+        if ($(CONFIG.boardSelector) || $(CONFIG.resultSelector)) return true;
+
+        return (
+            /\/menus\/\d+(?:[/?#]|$)/.test(location.pathname)
+            || /(?:Article)?Search(?:List)?\.nhn$/i.test(location.pathname)
+        );
+    }
+
     function getCafeId() {
         const params = getParams();
         const cafeId =
@@ -973,7 +989,7 @@
     }
 
     function renderPanel(options = {}) {
-        if (!hasSearchQuery()) return;
+        if (!isSearchResultsPage()) return;
 
         injectStyle();
 
@@ -1005,7 +1021,7 @@
     }
 
     function showFloatingButton() {
-        if (!hasSearchQuery() || $(`#${CONFIG.buttonId}`)) return;
+        if (!isSearchResultsPage() || $(`#${CONFIG.buttonId}`)) return;
 
         injectStyle();
 
@@ -1018,7 +1034,7 @@
         document.body.appendChild(button);
     }
     function waitForResults() {
-        if (!hasSearchQuery()) return;
+        if (!isSearchResultsPage()) return;
 
         showFloatingButton();
 
@@ -1045,7 +1061,7 @@
         const handleBoardStateChange = debounce(() => {
             if (isInternalUpdate) return;
             if (isCollectingAll) return;
-            if (!hasSearchQuery()) return;
+            if (!isSearchResultsPage()) return;
 
             const hasPanel = Boolean($(`#${CONFIG.panelId}`));
             const isBoardVisible = Boolean($(CONFIG.boardSelector));
@@ -1082,7 +1098,7 @@
         });
     }
     function init() {
-        if (!hasSearchQuery()) return;
+        if (!isSearchResultsPage()) return;
 
         console.log("[NCafeStats] init", {
             url: location.href,
